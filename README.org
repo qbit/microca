@@ -9,7 +9,7 @@ security enhancements.
 - ECDSA keys by default (P256).
 - RSA key size now defaults to 4096 and a size can be specified with
   ~-rsa-bits~.
-- Ability to set 
+- Ability to set root certificate common name. 
 
 ** Installation
 
