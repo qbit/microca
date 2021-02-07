@@ -1,0 +1,26 @@
+* microca
+
+Is a fork of [[https://github.com/jsha/minica][minica]] with added features and
+security enhancements.
+
+** Enhancements from minica
+
+- Ability to produce ED25519/ECDSA keys.
+- ECDSA keys by default (P256).
+- RSA key size now defaults to 4096 and a size can be specified with
+  ~-rsa-bits~.
+- Ability to set 
+
+** Installation
+
+#+BEGIN_SRC shell
+go get suah.dev/microca
+#+END_SRC
+
+** Example usage
+
+#+BEGIN_SRC shell
+# Generate a root key and cert in micro-key.pem, and micro.pem, then
+# generate and sign an end-entity key and cert, storing them in ./foo.com/
+$ microca -domains foo.com
+#+END_SRC
