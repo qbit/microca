@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
@@ -24,6 +25,11 @@ import (
 	"time"
 )
 
+var (
+	ed25519Key bool
+	rsaBits    int
+)
+
 func main() {
 	err := main2()
 	if err != nil {
@@ -32,7 +38,7 @@ func main() {
 }
 
 type issuer struct {
-	key  crypto.Signer
+	key  interface{}
 	cert *x509.Certificate
 }
 
@@ -54,13 +60,14 @@ func getIssuer(keyFile, certFile string) (*issuer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading private key from %s: %s", keyFile, err)
 	}
+	pubKey := publicKey(key)
 
 	cert, err := readCert(certContents)
 	if err != nil {
 		return nil, fmt.Errorf("reading CA certificate from %s: %s", certFile, err)
 	}
 
-	equal, err := publicKeysEqual(key.Public(), cert.PublicKey)
+	equal, err := publicKeysEqual(pubKey, cert.PublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("comparing public keys: %s", err)
 	} else if !equal {
@@ -70,14 +77,14 @@ func getIssuer(keyFile, certFile string) (*issuer, error) {
 	return &issuer{key, cert}, nil
 }
 
-func readPrivateKey(keyContents []byte) (crypto.Signer, error) {
+func readPrivateKey(keyContents []byte) (interface{}, error) {
 	block, _ := pem.Decode(keyContents)
 	if block == nil {
 		return nil, fmt.Errorf("no PEM found")
-	} else if block.Type != "RSA PRIVATE KEY" && block.Type != "ECDSA PRIVATE KEY" {
+	} else if block.Type != "PRIVATE KEY" {
 		return nil, fmt.Errorf("incorrect PEM type %s", block.Type)
 	}
-	return x509.ParsePKCS1PrivateKey(block.Bytes)
+	return x509.ParsePKCS8PrivateKey(block.Bytes)
 }
 
 func readCert(certContents []byte) (*x509.Certificate, error) {
@@ -102,22 +109,27 @@ func makeIssuer(keyFile, certFile string) error {
 	return nil
 }
 
-func makeKey(filename string) (*rsa.PrivateKey, error) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+func makeKey(filename string) (interface{}, error) {
+	var err error
+	var key crypto.PrivateKey
+	var der []byte
+	if ed25519Key {
+		_, key, err = ed25519.GenerateKey(rand.Reader)
+	} else {
+		key, err = rsa.GenerateKey(rand.Reader, rsaBits)
+	}
+	der, err = x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
 		return nil, err
 	}
-	der := x509.MarshalPKCS1PrivateKey(key)
-	if err != nil {
-		return nil, err
-	}
+
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 	err = pem.Encode(file, &pem.Block{
-		Type:  "RSA PRIVATE KEY",
+		Type:  "PRIVATE KEY",
 		Bytes: der,
 	})
 	if err != nil {
@@ -126,12 +138,15 @@ func makeKey(filename string) (*rsa.PrivateKey, error) {
 	return key, nil
 }
 
-func makeRootCert(key crypto.Signer, filename string) (*x509.Certificate, error) {
+func makeRootCert(key interface{}, filename string) (*x509.Certificate, error) {
 	serial, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
 	if err != nil {
 		return nil, err
 	}
-	skid, err := calculateSKID(key.Public())
+
+	pubKey := publicKey(key)
+
+	skid, err := calculateSKID(pubKey)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +167,7 @@ func makeRootCert(key crypto.Signer, filename string) (*x509.Certificate, error)
 		MaxPathLenZero:        true,
 	}
 
-	der, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
+	der, err := x509.CreateCertificate(rand.Reader, template, template, pubKey, key)
 	if err != nil {
 		return nil, err
 	}
@@ -213,6 +228,17 @@ func calculateSKID(pubKey crypto.PublicKey) ([]byte, error) {
 	return skid[:], nil
 }
 
+func publicKey(privKey interface{}) interface{} {
+	switch k := privKey.(type) {
+	case *rsa.PrivateKey:
+		return &k.PublicKey
+	case ed25519.PrivateKey:
+		return k.Public().(ed25519.PublicKey)
+	default:
+		return nil
+	}
+}
+
 func sign(iss *issuer, domains []string, ipAddresses []string) (*x509.Certificate, error) {
 	var cn string
 	if len(domains) > 0 {
@@ -231,6 +257,7 @@ func sign(iss *issuer, domains []string, ipAddresses []string) (*x509.Certificat
 	if err != nil {
 		return nil, err
 	}
+	pubKey := publicKey(key)
 	parsedIPs, err := parseIPs(ipAddresses)
 	if err != nil {
 		return nil, err
@@ -253,12 +280,17 @@ func sign(iss *issuer, domains []string, ipAddresses []string) (*x509.Certificat
 		// https://derflounder.wordpress.com/2019/06/06/new-tls-security-requirements-for-ios-13-and-macos-catalina-10-15/
 		NotAfter: time.Now().AddDate(2, 0, 30),
 
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
 		IsCA:                  false,
 	}
-	der, err := x509.CreateCertificate(rand.Reader, template, iss.cert, key.Public(), iss.key)
+
+	if !ed25519Key {
+		template.KeyUsage |= x509.KeyUsageKeyEncipherment
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, iss.cert, pubKey, iss.key)
 	if err != nil {
 		return nil, err
 	}
@@ -289,6 +321,8 @@ func main2() error {
 	var caCert = flag.String("ca-cert", "minica.pem", "Root certificate filename, PEM encoded.")
 	var domains = flag.String("domains", "", "Comma separated domain names to include as Server Alternative Names.")
 	var ipAddresses = flag.String("ip-addresses", "", "Comma separated IP addresses to include as Server Alternative Names.")
+	flag.BoolVar(&ed25519Key, "ed25519", false, "Generate ED25519 keys")
+	flag.IntVar(&rsaBits, "rsa-bits", 4096, "RSA key size in bits.")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, `
