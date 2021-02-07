@@ -21,8 +21,11 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"text/tabwriter"
 	"time"
 )
 
@@ -32,6 +35,7 @@ var (
 	ed25519Key bool
 	rsaBits    int
 	rsaKey     bool
+	showExp    bool
 )
 
 func main() {
@@ -348,6 +352,7 @@ func main2() error {
 	var domains = flag.String("domains", "", "Comma separated domain names to include as Server Alternative Names.")
 	var ipAddresses = flag.String("ip-addresses", "", "Comma separated IP addresses to include as Server Alternative Names.")
 	flag.BoolVar(&ed25519Key, "ed25519", false, "Generate ED25519 keys")
+	flag.BoolVar(&showExp, "expire", false, "Show the expiration date for each certificate.")
 	flag.IntVar(&rsaBits, "rsa-bits", 4096, "RSA key size in bits.")
 	flag.StringVar(&ecdsaCurve, "ecdsa-curve", "P256", "ECDSA curve used when generating keys (P224, P256 (default), P384, P521).")
 	flag.StringVar(&caName, "ca-name", "microca root", "Common Name used in root certificate.")
@@ -375,14 +380,54 @@ will not overwrite existing keys or certificates.
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+
+	if showExp {
+		afp, err := filepath.Abs(".")
+		if err != nil {
+			log.Fatalln(err)
+		}
+		w := new(tabwriter.Writer)
+		w.Init(os.Stdout, 0, 8, 0, '\t', 0)
+		fmt.Fprintf(w, "Domain/IP\tExpiration\n")
+		defer w.Flush()
+		err = filepath.Walk(afp, func(fpath string, info os.FileInfo, err error) error {
+			if err != nil {
+				fmt.Println(err)
+				return err
+			}
+			if info.IsDir() {
+				certFile := path.Join(info.Name(), "cert.pem")
+				if _, err := os.Stat(certFile); err == nil {
+					certContents, err := ioutil.ReadFile(certFile)
+					if err != nil {
+						return fmt.Errorf("reading certificate from %s: %s", certFile, err)
+					}
+					cert, err := readCert(certContents)
+					if err != nil {
+						return fmt.Errorf("reading certificate from %s: %s", certFile, err)
+					}
+
+					fmt.Fprintf(w, "%q\t%s\n", info.Name(), cert.NotAfter)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			log.Println(err)
+		}
+		return nil
+	}
+
 	if *domains == "" && *ipAddresses == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
+
 	if len(flag.Args()) > 0 {
 		fmt.Printf("Extra arguments: %s (maybe there are spaces in your domain list?)\n", flag.Args())
 		os.Exit(1)
 	}
+
 	domainSlice := split(*domains)
 	domainRe := regexp.MustCompile("^[A-Za-z0-9.*-]+$")
 	for _, d := range domainSlice {
@@ -391,6 +436,7 @@ will not overwrite existing keys or certificates.
 			os.Exit(1)
 		}
 	}
+
 	ipSlice := split(*ipAddresses)
 	for _, ip := range ipSlice {
 		if net.ParseIP(ip) == nil {
@@ -398,10 +444,12 @@ will not overwrite existing keys or certificates.
 			os.Exit(1)
 		}
 	}
+
 	issuer, err := getIssuer(*caKey, *caCert)
 	if err != nil {
 		return err
 	}
+
 	_, err = sign(issuer, domainSlice, ipSlice)
 	return err
 }

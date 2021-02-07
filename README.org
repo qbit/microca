@@ -10,6 +10,7 @@ security enhancements.
 - RSA key size now defaults to 4096 and a size can be specified with
   ~-rsa-bits~.
 - Ability to set root certificate common name. 
+- Ability to show expiration for certificates in the ~$CWD~. 
 
 ** Installation
 
