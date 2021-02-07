@@ -386,9 +386,9 @@ will not overwrite existing keys or certificates.
 		if err != nil {
 			log.Fatalln(err)
 		}
-		w := new(tabwriter.Writer)
-		w.Init(os.Stdout, 0, 8, 0, '\t', 0)
-		fmt.Fprintf(w, "Domain/IP\tExpiration\n")
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
+
+		fmt.Fprintf(w, "Domain\tExpiration\n")
 		defer w.Flush()
 		err = filepath.Walk(afp, func(fpath string, info os.FileInfo, err error) error {
 			if err != nil {
@@ -407,7 +407,10 @@ will not overwrite existing keys or certificates.
 						return fmt.Errorf("reading certificate from %s: %s", certFile, err)
 					}
 
-					fmt.Fprintf(w, "%q\t%s\n", info.Name(), cert.NotAfter)
+					fmt.Fprintf(w, "%s\t%s\n",
+						strings.Join(cert.DNSNames, ", "),
+						cert.NotAfter,
+					)
 				}
 			}
 			return nil
