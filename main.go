@@ -12,7 +12,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/hex"
 	"encoding/pem"
 	"flag"
 	"fmt"
@@ -28,9 +27,11 @@ import (
 )
 
 var (
-	ed25519Key bool
+	caName     string
 	ecdsaCurve string
+	ed25519Key bool
 	rsaBits    int
+	rsaKey     bool
 )
 
 func main() {
@@ -117,24 +118,27 @@ func makeKey(filename string) (interface{}, error) {
 	var key crypto.PrivateKey
 	var der []byte
 
-	switch ecdsaCurve {
-	case "":
+	if ed25519Key || rsaKey {
 		if ed25519Key {
 			_, key, err = ed25519.GenerateKey(rand.Reader)
 		} else {
 			key, err = rsa.GenerateKey(rand.Reader, rsaBits)
 		}
-	case "P224":
-		key, err = ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
-	case "P256":
-		key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	case "P384":
-		key, err = ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
-	case "P521":
-		key, err = ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
-	default:
-		return nil, fmt.Errorf("Unrecognized curve: %q", ecdsaCurve)
+	} else {
+		switch ecdsaCurve {
+		case "P224":
+			key, err = ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
+		case "P256":
+			key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		case "P384":
+			key, err = ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+		case "P521":
+			key, err = ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
+		default:
+			return nil, fmt.Errorf("Unrecognized curve: %q", ecdsaCurve)
+		}
 	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +177,7 @@ func makeRootCert(key interface{}, filename string) (*x509.Certificate, error) {
 	}
 	template := &x509.Certificate{
 		Subject: pkix.Name{
-			CommonName: "minica root ca " + hex.EncodeToString(serial.Bytes()[:3]),
+			CommonName: caName,
 		},
 		SerialNumber: serial,
 		NotBefore:    time.Now(),
@@ -339,27 +343,28 @@ func split(s string) (results []string) {
 }
 
 func main2() error {
-	var caKey = flag.String("ca-key", "minica-key.pem", "Root private key filename, PEM encoded.")
-	var caCert = flag.String("ca-cert", "minica.pem", "Root certificate filename, PEM encoded.")
+	var caKey = flag.String("ca-key", "microca-key.pem", "Root private key filename, PEM encoded.")
+	var caCert = flag.String("ca-cert", "microca.pem", "Root certificate filename, PEM encoded.")
 	var domains = flag.String("domains", "", "Comma separated domain names to include as Server Alternative Names.")
 	var ipAddresses = flag.String("ip-addresses", "", "Comma separated IP addresses to include as Server Alternative Names.")
 	flag.BoolVar(&ed25519Key, "ed25519", false, "Generate ED25519 keys")
 	flag.IntVar(&rsaBits, "rsa-bits", 4096, "RSA key size in bits.")
-	flag.StringVar(&ecdsaCurve, "ecdsa-curve", "", "ECDSA curve used when generating keys (P224, P256 (recommended), P384, P521).")
+	flag.StringVar(&ecdsaCurve, "ecdsa-curve", "P256", "ECDSA curve used when generating keys (P224, P256 (default), P384, P521).")
+	flag.StringVar(&caName, "ca-name", "microca root", "Common Name used in root certificate.")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, `
-Minica is a simple CA intended for use in situations where the CA operator
+microca is a simple CA intended for use in situations where the CA operator
 also operates each host where a certificate will be used. It automatically
 generates both a key and a certificate when asked to produce a certificate.
-It does not offer OCSP or CRL services. Minica is appropriate, for instance,
+It does not offer OCSP or CRL services. microca is appropriate, for instance,
 for generating certificates for RPC systems or microservices.
 
-On first run, minica will generate a keypair and a root certificate in the
+On first run, microca will generate a keypair and a root certificate in the
 current directory, and will reuse that same keypair and root certificate
 unless they are deleted.
 
-On each run, minica will generate a new keypair and sign an end-entity (leaf)
+On each run, microca will generate a new keypair and sign an end-entity (leaf)
 certificate for that keypair. The certificate will contain a list of DNS names
 and/or IP addresses from the command line flags. The key and certificate are
 placed in a new directory whose name is chosen as the first domain name from
