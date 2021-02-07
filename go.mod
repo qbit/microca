@@ -1,1 +1,1 @@
-module github.com/jsha/minica
+module suah.dev/microca
