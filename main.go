@@ -70,7 +70,7 @@ func getIssuer(keyFile, certFile string) (*issuer, error) {
 	}
 	pubKey := publicKey(key)
 
-	cert, err := readCert(certContents)
+	cert, err := parseCert(certContents)
 	if err != nil {
 		return nil, fmt.Errorf("reading CA certificate from %s: %s", certFile, err)
 	}
@@ -95,7 +95,15 @@ func readPrivateKey(keyContents []byte) (interface{}, error) {
 	return x509.ParsePKCS8PrivateKey(block.Bytes)
 }
 
-func readCert(certContents []byte) (*x509.Certificate, error) {
+func readCert(certPath string) (*x509.Certificate, error) {
+	certContents, err := ioutil.ReadFile(certPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading certificate from %s: %s", certPath, err)
+	}
+	return parseCert(certContents)
+}
+
+func parseCert(certContents []byte) (*x509.Certificate, error) {
 	block, _ := pem.Decode(certContents)
 	if block == nil {
 		return nil, fmt.Errorf("no PEM found")
@@ -384,27 +392,50 @@ will not overwrite existing keys or certificates.
 	if showExp {
 		afp, err := filepath.Abs(".")
 		if err != nil {
-			log.Fatalln(err)
+			return err
 		}
+		caW := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
 
-		fmt.Fprintf(w, "Domain\tExpiration\n")
+		fmt.Fprintf(caW, "CA Certificate\tExpiration\n")
+		fmt.Fprintf(w, "Leaf Certificate\tExpiration\n")
+
+		topCerts, err := filepath.Glob("./*.pem")
+		if err != nil {
+			return err
+		}
+
+		for _, tc := range topCerts {
+			if strings.Contains(tc, "key.pem") {
+				continue
+			}
+			cert, err := readCert(tc)
+			if err != nil {
+				return err
+			}
+
+			fmt.Fprintf(caW, "%s (%s)\t%s\n",
+				cert.Subject,
+				tc,
+				cert.NotAfter,
+			)
+		}
+		fmt.Fprintf(caW, "\t\n")
+
+		// Prints CA cert info first, and leaf second.
 		defer w.Flush()
+		defer caW.Flush()
+
 		err = filepath.Walk(afp, func(fpath string, info os.FileInfo, err error) error {
 			if err != nil {
-				fmt.Println(err)
 				return err
 			}
 			if info.IsDir() {
 				certFile := path.Join(info.Name(), "cert.pem")
 				if _, err := os.Stat(certFile); err == nil {
-					certContents, err := ioutil.ReadFile(certFile)
+					cert, err := readCert(certFile)
 					if err != nil {
-						return fmt.Errorf("reading certificate from %s: %s", certFile, err)
-					}
-					cert, err := readCert(certContents)
-					if err != nil {
-						return fmt.Errorf("reading certificate from %s: %s", certFile, err)
+						return err
 					}
 
 					fmt.Fprintf(w, "%s\t%s\n",
