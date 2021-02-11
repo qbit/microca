@@ -147,7 +147,7 @@ func makeKey(filename string) (interface{}, error) {
 		case "P521":
 			key, err = ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
 		default:
-			return nil, fmt.Errorf("Unrecognized curve: %q", ecdsaCurve)
+			return nil, fmt.Errorf("unrecognized curve: %q", ecdsaCurve)
 		}
 	}
 
@@ -244,7 +244,7 @@ func publicKeysEqual(a, b interface{}) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return bytes.Compare(aBytes, bBytes) == 0, nil
+	return bytes.Equal(aBytes, bBytes), nil
 }
 
 func calculateSKID(pubKey crypto.PublicKey) ([]byte, error) {
