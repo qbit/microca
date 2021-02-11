@@ -360,6 +360,7 @@ func main2() error {
 	var domains = flag.String("domains", "", "Comma separated domain names to include as Server Alternative Names.")
 	var ipAddresses = flag.String("ip-addresses", "", "Comma separated IP addresses to include as Server Alternative Names.")
 	flag.BoolVar(&ed25519Key, "ed25519", false, "Generate ED25519 keys")
+	flag.BoolVar(&rsaKey, "rsa", false, "Generate RSA keys")
 	flag.BoolVar(&showExp, "show-expire", false, "Show the expiration date for each certificate.")
 	flag.IntVar(&rsaBits, "rsa-bits", 4096, "RSA key size in bits.")
 	flag.StringVar(&ecdsaCurve, "ecdsa-curve", "P256", "ECDSA curve used when generating keys (P224, P256 (default), P384, P521).")
