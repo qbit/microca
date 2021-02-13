@@ -398,8 +398,8 @@ will not overwrite existing keys or certificates.
 		caW := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
 
-		fmt.Fprintf(caW, "CA Certificate\tExpiration\n")
-		fmt.Fprintf(w, "Leaf Certificate\tExpiration\n")
+		fmt.Fprintf(caW, "CA Certificate\tType\tExpiration\n")
+		fmt.Fprintf(w, "Leaf Certificate\tType\tExpiration\n")
 
 		topCerts, err := filepath.Glob("./*.pem")
 		if err != nil {
@@ -415,9 +415,10 @@ will not overwrite existing keys or certificates.
 				return err
 			}
 
-			fmt.Fprintf(caW, "%s (%s)\t%s\n",
+			fmt.Fprintf(caW, "%s (%s)\t%s\t%s\n",
 				cert.Subject,
 				tc,
+				cert.PublicKeyAlgorithm,
 				cert.NotAfter,
 			)
 		}
@@ -439,8 +440,9 @@ will not overwrite existing keys or certificates.
 						return err
 					}
 
-					fmt.Fprintf(w, "%s\t%s\n",
+					fmt.Fprintf(w, "%s\t%s\t%s\n",
 						strings.Join(cert.DNSNames, ", "),
+						cert.PublicKeyAlgorithm,
 						cert.NotAfter,
 					)
 				}
