@@ -36,6 +36,7 @@ var (
 	rsaBits    int
 	rsaKey     bool
 	showExp    bool
+	expDays    int
 )
 
 func main() {
@@ -316,7 +317,7 @@ func sign(iss *issuer, domains []string, ipAddresses []string) (*x509.Certificat
 		// macOS requirements that all server certificates must have validity
 		// shorter than 825 days:
 		// https://derflounder.wordpress.com/2019/06/06/new-tls-security-requirements-for-ios-13-and-macos-catalina-10-15/
-		NotAfter: time.Now().AddDate(2, 0, 30),
+		NotAfter: time.Now().AddDate(0, 0, expDays),
 
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
@@ -364,6 +365,7 @@ func main2() error {
 	flag.BoolVar(&showExp, "show-expire", false, "Show the expiration date for each certificate.")
 	flag.IntVar(&rsaBits, "rsa-bits", 4096, "RSA key size in bits.")
 	flag.StringVar(&ecdsaCurve, "ecdsa-curve", "P256", "ECDSA curve used when generating keys (P224, P256 (default), P384, P521).")
+	flag.IntVar(&expDays, "exp-days", 760, "Days until certificate expires.")
 	flag.StringVar(&caName, "ca-name", "microca root", "Common Name used in root certificate.")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
