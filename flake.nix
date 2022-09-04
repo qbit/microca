@@ -1,5 +1,6 @@
 {
-  description = "microca: microca is a small, simple Certificate Authority tool.";
+  description =
+    "microca: microca is a small, simple Certificate Authority tool.";
 
   inputs.nixpkgs.url = "nixpkgs/nixos-unstable";
 
@@ -13,6 +14,7 @@
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
       nixpkgsFor = forAllSystems (system: import nixpkgs { inherit system; });
     in {
+      overlay = import ./overlay.nix { inherit self; };
       packages = forAllSystems (system:
         let pkgs = nixpkgsFor.${system};
         in {
@@ -21,7 +23,8 @@
             inherit version;
             src = ./.;
 
-            vendorSha256 = "sha256-pQpattmS9VmO3ZIQUFn66az8GSmB4IvYhTTCFn6SUmo=";
+            vendorSha256 =
+              "sha256-pQpattmS9VmO3ZIQUFn66az8GSmB4IvYhTTCFn6SUmo=";
 
             proxyVendor = true;
           };
@@ -30,11 +33,13 @@
       defaultPackage = forAllSystems (system: self.packages.${system}.microca);
       devShells = forAllSystems (system:
         let pkgs = nixpkgsFor.${system};
-        in { default = pkgs.mkShell {
-          shellHook = ''
-            PS1='\u@\h:\@; '
-          '';
-          nativeBuildInputs = with pkgs; [ git go gopls go-tools ];
-        }; });
+        in {
+          default = pkgs.mkShell {
+            shellHook = ''
+              PS1='\u@\h:\@; '
+            '';
+            nativeBuildInputs = with pkgs; [ git go gopls go-tools ];
+          };
+        });
     };
 }
