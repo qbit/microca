@@ -400,14 +400,19 @@ will not overwrite existing keys or certificates.
 		caW := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
 
-		fmt.Fprintf(caW, "CA Certificate\tType\tExpiration\n")
-		fmt.Fprintf(w, "Leaf Certificate\tType\tExpiration\n")
+		fmt.Fprintf(caW, "CA Certificate\tType\tExpiration\tExpired?\n")
+		fmt.Fprintf(w, "Leaf Certificate\tType\tExpiration\tExpired?\n")
 
 		topCerts, err := filepath.Glob("./*.pem")
 		if err != nil {
 			return err
 		}
 
+		if *caCert != "microca.pem" {
+			topCerts = append(topCerts, *caCert)
+		}
+
+		now := time.Now()
 		for _, tc := range topCerts {
 			if strings.Contains(tc, "key.pem") {
 				continue
@@ -417,11 +422,12 @@ will not overwrite existing keys or certificates.
 				return err
 			}
 
-			fmt.Fprintf(caW, "%s (%s)\t%s\t%s\n",
+			fmt.Fprintf(caW, "%s (%s)\t%s\t%s\t%t\n",
 				cert.Subject,
 				tc,
 				cert.PublicKeyAlgorithm,
 				cert.NotAfter,
+				now.After(cert.NotAfter),
 			)
 		}
 		fmt.Fprintf(caW, "\t\n")
@@ -442,10 +448,11 @@ will not overwrite existing keys or certificates.
 						return err
 					}
 
-					fmt.Fprintf(w, "%s\t%s\t%s\n",
+					fmt.Fprintf(w, "%s\t%s\t%s\t%t\n",
 						strings.Join(cert.DNSNames, ", "),
 						cert.PublicKeyAlgorithm,
 						cert.NotAfter,
+						now.After(cert.NotAfter),
 					)
 				}
 			}
